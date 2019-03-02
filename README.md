@@ -14,6 +14,8 @@ __How does your research fit into the broader problem domain? You should cite at
 * Advantages and disadvantages of adopting e-learning in higher education (http://itdl.org/Journal/Jan_15/Jan15.pdf#page=33)
 
 __What specific hypothesis (hypotheses) are you going to test?__
+
+
 __Our Research Questions:__
 * Does a student background affect the likelihood of the student passing an online course?
 * _How does a student interaction with the online courses (i.e. how often do they log in, what resources do they access?) affect their grades?
