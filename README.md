@@ -18,7 +18,7 @@ __What specific hypothesis (hypotheses) are you going to test?__
 
 __Our Research Questions:__
 * Does a student background affect the likelihood of the student passing an online course?
-* _How does a student interaction with the online courses (i.e. how often do they log in, what resources do they access?) affect their grades?
+* How does a student interaction with the online courses (i.e. how often do they log in, what resources do they access?) affect their grades?
 * What are the factors that indicate success among people using VLE?
 * What are the factors that affect the educational effect of VLE?
 * What are the factors that cause people to withdraw from a course?
