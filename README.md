@@ -2,7 +2,7 @@
 #### Group 3: Grant Suyama, Kathy Chiu, Kevin Lim, Eshin Ang
 #### 28 February 2019
 #### Link to modeling code: https://eang16.github.io/info370-w19-final-group3/report.nb.html
-#### Link to final resource: 
+#### Link to final resource: https://eang16.github.io/info370-w19-final-group3/FinalReport.html
 
 ## Project Description
 __What is the overarching purpose of your research project, and why is it an important undertaking?__
