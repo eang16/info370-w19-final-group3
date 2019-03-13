@@ -1,0 +1,507 @@
+---
+title: "Modeling Student VLE Learning Performance"
+output: html_notebook
+---
+
+```{r}
+source("dataprep.R")
+library(caret)
+```
+
+### Set up
+```{r}
+#set up for parallel processing
+library(doParallel)
+registerDoParallel(cores=2)
+```
+
+```{r}
+# Perform 5-fold cross validation with 3 repeats
+# Optimize the (hyper) parameters of the model using a grid-search
+data_control <- trainControl(method = "repeatedcv", number = 5, repeats = 3, allowParallel = TRUE, search = "grid",  classProbs = TRUE)
+```
+
+## Iteration 1: Multiclass classification approach by considering all 4 outcomes of Distinction, Pass, Fail, and Withdrawn
+
+### Iteration 1: Data prep
+```{r}
+# split data into train/test sets
+set.seed(100)
+data_split <- createDataPartition(data$final_result, p = .8, list = FALSE, times = 1)
+train_data <- data[data_split,]
+test_data <- data[-data_split,]
+train_data <- train_data[, c(1:9, 12:21)]
+test_data <- test_data[, c(1:9, 12:21)]
+
+# check classes weights - imbalanced
+prop.table(table(train_data$final_result))
+
+# create model weights to handle imbalanced classes
+model_weights <- data.frame(matrix(NA, nrow = nrow(train_data), ncol = 1))
+for(i in 1:nrow(train_data)) {
+  if(train_data[i,]$final_result == "Distinction") {
+      model_weights[i,] <- (1/table(train_data$final_result)[1]) * 0.25
+  } else if (train_data[i,]$final_result == "Fail") {
+      model_weights[i,] <- (1/table(train_data$final_result)[2]) * 0.25
+  } else if (train_data[i,]$final_result == "Pass") {
+      model_weights[i,] <- (1/table(train_data$final_result)[3]) * 0.25
+  } else {
+      model_weights[i,] <- (1/table(train_data$final_result)[4]) * 0.25
+  }
+}
+```
+
+### Iteration 1: Modeling with supervised classificatoin machine learning algorithms
+##### Note: all algorithms used from caret package have built-in feature selection 
+```{r}
+# Gradient boosting model
+library(gbm)
+set.seed(100)
+data_gbm <- train(final_result ~ .-date_unregistration -exam_score -assessment_score,
+                      data = train_data,
+                      method = "gbm",
+                      verbose = FALSE,
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      trControl = data_control)
+
+# assessing gbm model performance
+data_pred <- predict(data_gbm, test_data)
+confusionMatrix(data_pred, test_data$final_result)
+
+# Neural Network model
+library(nnet)
+set.seed(100)
+data_nnet <- train(final_result ~ .,
+                      data = train_data,
+                      method = "nnet",
+                      verbose = FALSE,
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      trControl = data_control)
+
+# assessing nnet model performance
+data_nnet_pred <- predict(data_nnet, test_data)
+confusionMatrix(data_nnet_pred, test_data$final_result)
+
+# Random Forest model
+library(ranger)
+set.seed(100)
+data_rf <- train(final_result ~ .,
+                      data = train_data,
+                      method = "ranger",
+                      verbose = FALSE,
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      importance = "permutation",
+                      trControl = data_control)
+
+# assessing rf model performance
+data_rf_pred <- predict(data_rf, test_data)
+confusionMatrix(data_rf_pred, test_data$final_result)
+
+# K-Nearest Neighbors model
+set.seed(100)
+data_knn <- train(final_result ~ .,
+                      data = train_data,
+                      method = "knn",
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      trControl = data_control)
+
+# assessing knn model performance
+data_knn_pred <- predict(data_knn, test_data)
+confusionMatrix(data_knn_pred, test_data$final_result)
+
+# Support Vector Machine model
+library(kernlab)
+set.seed(100)
+data_svm <- train(final_result ~ .,
+                      data = train_data,
+                      method = "svmLinear",
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      trControl = data_control)
+
+# assessing svm model performance
+data_svm_pred <- predict(data_svm, test_data)
+confusionMatrix(data_svm_pred, test_data$final_result)
+
+# Classification and Regression Trees (CART) model
+library(rpart)
+set.seed(100)
+data_cart <- train(final_result ~ .,
+                      data = train_data,
+                      method = "rpart",
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      trControl = data_control)
+
+# assessing CART model performance
+data_cart_pred <- predict(data_cart, test_data)
+confusionMatrix(data_cart_pred, test_data$final_result)
+
+# Naive Bayes model
+library(naivebayes)
+set.seed(100)
+data_naivebayes <- train(final_result ~ .,
+                      data = train_data,
+                      method = "naive_bayes",
+                      weights = model_weights$matrix.NA..nrow...nrow.train_data...ncol...1.,
+                      trControl = data_control)
+
+# assessing naivebayes model performance
+data_naivebayes_pred <- predict(data_naivebayes, test_data)
+confusionMatrix(data_naivebayes_pred, test_data$final_result)
+```
+
+### Iteration 1: Validation and visualization of models
+```{r}
+# select best model with cross validation
+results <- resamples(list(gbm=data_gbm, nnet=data_nnet, rf=data_rf, knn=data_knn, svm=data_svm, cart=data_cart, naivebayes=data_naivebayes))
+summary(results)
+dotplot(results)
+```
+
+## Iteration 2: Multiclass classification approach by considering 3 outcomes of Distinction, Pass, Fail
+
+### Iteration 2: Data prep
+```{r}
+# split data_2 (dataset without Withdrawn outcome) into train/test sets
+set.seed(100)
+data_2_split <- createDataPartition(data_2$final_result, p = .8, list = FALSE, times = 1)
+train_data_2 <- data_2[data_2_split,]
+test_data_2 <- data_2[-data_2_split,]
+train_data_2 <- train_data_2[, c(1:9, 12:21)]
+test_data_2 <- test_data_2[, c(1:9, 12:21)]
+prop.table(table(train_data_2$final_result))
+
+# create model weights to handle imbalanced classes
+model_weights_2 <- data.frame(matrix(NA, nrow = nrow(train_data_2), ncol = 1))
+for(i in 1:nrow(train_data_2)) {
+  if(train_data_2[i,]$final_result == "Distinction") {
+      model_weights_2[i,] <- (1/table(train_data_2$final_result)[1]) * (1/3)
+  } else if (train_data[i,]$final_result == "Fail") {
+      model_weights_2[i,] <- (1/table(train_data_2$final_result)[2]) * (1/3)
+  } else {
+      model_weights_2[i,] <- (1/table(train_data_2$final_result)[3]) * (1/3)
+  }
+}
+```
+
+### Iteration 2: Modeling with supervised classificatoin machine learning algorithms
+```{r}
+# Gradient boosting model
+library(gbm)
+set.seed(100)
+data_gbm_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "gbm",
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      trControl = data_control)
+
+# assessing gbm model performance
+data_gbm_pred_2 <- predict(data_gbm_2, test_data_2)
+confusionMatrix(data_gbm_pred_2, test_data_2$final_result)
+
+# Neural Network model
+library(nnet)
+set.seed(100)
+data_nnet_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "nnet",
+                      verbose = FALSE,
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      trControl = data_control)
+
+# assessing nnet model performance
+data_nnet_pred_2 <- predict(data_nnet_2, test_data_2)
+confusionMatrix(data_nnet_pred_2, test_data_2$final_result)
+
+# Random Forest model
+library(ranger)
+set.seed(100)
+data_rf_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "ranger",
+                      verbose = FALSE,
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      importance = "permutation",
+                      trControl = data_control)
+
+# assessing rf model performance
+data_rf_pred_2 <- predict(data_rf_2, test_data_2)
+confusionMatrix(data_rf_pred_2, test_data_2$final_result)
+
+# K-Nearest Neighbors model
+set.seed(100)
+data_knn_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "knn",
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      trControl = data_control)
+
+# assessing knn model performance
+data_knn_pred_2 <- predict(data_knn_2, test_data_2)
+confusionMatrix(data_knn_pred_2, test_data_2$final_result)
+
+# Support Vector Machine model
+library(kernlab)
+set.seed(100)
+data_svm_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "svmLinear",
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      trControl = data_control)
+
+# assessing svm model performance
+data_svm_pred_2 <- predict(data_svm_2, test_data_2)
+confusionMatrix(data_svm_pred_2, test_data_2$final_result)
+
+
+# Classification and Regression Trees (CART) model
+library(rpart)
+set.seed(100)
+data_cart_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "rpart",
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      trControl = data_control)
+
+# assessing cart model performance
+data_cart_pred_2 <- predict(data_cart_2, test_data_2)
+confusionMatrix(data_cart_pred_2, test_data_2$final_result)
+
+# Naive Bayes model
+library(naivebayes)
+set.seed(100)
+data_naivebayes_2 <- train(final_result ~ .,
+                      data = train_data_2,
+                      method = "naive_bayes",
+                      weights = model_weights_2$matrix.NA..nrow...nrow.train_data_no_withdrawn...ncol...1.,
+                      trControl = data_control)
+
+# assessing naivebayes model performance
+data_naivebayes_pred_2 <- predict(data_naivebayes_2, test_data_2)
+confusionMatrix(data_naivebayes_pred_2, test_data_2$final_result)
+```
+
+### Iteration 2: Validation and visualization of models
+```{r}
+#select best model
+models_result <- resamples(list(gbm=data_gbm_2, nnet=data_nnet_2, rf=data_rf_2, knn=data_knn_2, svm=data_svm_2, cart=data_cart_2, naivebayes=data_naivebayes_2))
+summary(models_result)
+dotplot(models_result)
+
+```
+
+## Iteration 3: Same as iteration 2 but with normalized data
+
+### Iteration 3: Data prep
+```{r}
+#Normalize numerical columns for data_2
+data_2_normalize <- preProcess(data_2, method="range")
+data_2_transformed <- predict(data_2_normalize, newdata = data_2)
+
+# split data_2_transformed (normalized data_2) into train/test sets
+set.seed(100)
+data_3_split <- createDataPartition(data_2_transformed$final_result, p = .8, list = FALSE, times = 1)
+train_data_3 <- data_2_transformed[data_3_split,]
+test_data_3 <- data_2_transformed[-data_3_split,]
+train_data_3 <- train_data_3[, c(1:9, 12:21)]
+test_data_3 <- test_data_3[, c(1:9, 12:21)]
+
+# create model weights to handle imbalanced classes
+model_weights_3 <- data.frame(matrix(NA, nrow = nrow(train_data_3), ncol = 1))
+for(i in 1:nrow(train_data_3)) {
+  if(train_data_3[i,]$final_result == "Distinction") {
+      model_weights_3[i,] <- (1/table(train_data_3$final_result)[1]) * (1/3)
+  } else if (train_data[i,]$final_result == "Fail") {
+      model_weights_3[i,] <- (1/table(train_data_3$final_result)[2]) * (1/3)
+  } else {
+      model_weights_3[i,] <- (1/table(train_data_3$final_result)[3]) * (1/3)
+  }
+}
+```
+
+### Iteration 3: Modeling with Gradient Boosting model and Random Forest model
+
+```{r}
+# Gradient boosting model
+library(gbm)
+set.seed(100)
+data_gbm_3 <- train(final_result ~ .,
+                      data = train_data_3,
+                      method = "gbm",
+                      weights = model_weights_3$matrix.NA..nrow...nrow.train_data_3...ncol...1.,
+                      trControl = data_control)
+
+# assessing gbm model performance
+data_gbm_pred_3 <- predict(data_gbm_3, test_data_3)
+confusionMatrix(data_gbm_pred_3, test_data_3$final_result)library(ranger)
+
+# Random Forest model
+set.seed(100)
+data_rf_3 <- train(final_result ~ .,
+                      data = train_data_3,
+                      method = "ranger",
+                      verbose = FALSE,
+                      weights = model_weights_3$matrix.NA..nrow...nrow.train_data_3...ncol...1.,
+                      importance = "permutation",
+                      trControl = data_control)
+
+# assessing rf model performance
+data_rf_pred_3 <- predict(data_rf_3, test_data_3)
+confusionMatrix(data_rf_pred_3, test_data_3$final_result)
+```
+
+### Iteration 3: Validation and visualization of models by comparing it with iteration 2 models
+```{r}
+#select best model
+models_result_norm <- resamples(list(gbm=data_gbm_2, rf=data_rf_2, gbm_norm=data_gbm_3, rf_norm=data_rf_3))
+summary(models_result_norm)
+dotplot(models_result_norm)
+```
+
+## Iteration 4a: Binary classification approach by predicting 2 outcomes of Pass vs. Fail
+
+### Iteration 4a: Data prep
+```{r}
+# split data_pass (dataset to predict pass/fail) into train/test sets
+set.seed(100)
+data_pass_split <- createDataPartition(data_pass$final_result, p = .8, list = FALSE, times = 1)
+train_data_pass <- data_pass[data_pass_split,]
+test_data_pass <- data_pass[-data_pass_split,]
+train_data_pass <- train_data_pass[, c(1:9, 12:21)]
+test_data_pass <- test_data_pass[, c(1:9, 12:21)]
+
+# create model weights for data_pass
+model_weights_pass <- data.frame(matrix(NA, nrow = nrow(train_data_pass), ncol = 1))
+for(i in 1:nrow(train_data_pass)) {
+  if(train_data_pass[i,]$final_result == "Pass") {
+      model_weights_pass[i,] <- (1/table(train_data_pass$final_result)[1]) * 0.5
+  } else {
+      model_weights_pass[i,] <- (1/table(train_data_pass$final_result)[2]) * 0.5
+  }
+}
+```
+
+### Iteration 4a: Modeling with Gradient Boosting model and Random Forest model
+```{r}
+# Gradient boosting model
+library(gbm)
+set.seed(100)
+data_gbm_pass <- train(final_result ~ .,
+                      data = train_data_pass,
+                      method = "gbm",
+                      weights = model_weights_pass$matrix.NA..nrow...nrow.train_data_pass...ncol...1.,
+                      trControl = data_control)
+
+data_gbm_pred_pass <- predict(data_gbm_pass, test_data_pass)
+confusionMatrix(data_gbm_pred_pass, test_data_pass$final_result)
+
+#Random Forest model
+library(ranger)
+set.seed(100)
+data_rf_pass <- train(final_result ~ .,
+                      data = train_data_pass,
+                      method = "ranger",
+                      verbose = FALSE,
+                      weights = model_weights_pass$matrix.NA..nrow...nrow.train_data_pass...ncol...1.,
+                      importance = "permutation",
+                      trControl = data_control)
+
+data_rf_pred_pass <- predict(data_rf_pass, test_data_pass)
+confusionMatrix(data_rf_pred_pass, test_data_pass$final_result)
+```
+
+### Iteration 4a: Validation and visualization of models
+```{r}
+# select best model
+# result shows gbm model with higher accuracy
+models_result_pass <- resamples(list(gbm=data_gbm_pass, rf=data_rf_pass))
+summary(models_result_norm)
+dotplot(models_result_pass)
+
+# confusion matrix of gbm model
+confusionMatrix(data_gbm_pred_pass, test_data_pass$final_result)
+
+# plot variable importance of gbm model
+plot(varImp(data_gbm_pass))
+
+# plot ROC curve 
+library(pROC)
+gbm_predicted <- ifelse(data_gbm_pred_pass=="Pass", 1, 0)
+gbm_actual <- ifelse(test_data_pass$final_result=="Pass", 1, 0)
+gbm_roc <- roc(gbm_actual, gbm_predicted)
+plot(gbm_roc, col = "steelblue3", print.auc=TRUE)
+```
+
+## Iteration 4b: Binary classification approach by predicting 2 outcomes of Distinction vs. Not Distinction
+
+### Iteration 4b: Data prep
+```{r}
+# split data_dist (dataset to predict distinction/not distinction) into train/test sets
+set.seed(100)
+data_dist_split <- createDataPartition(data_dist$final_result, p = .8, list = FALSE, times = 1)
+train_data_dist <- data_dist[data_dist_split,]
+test_data_dist <- data_dist[-data_dist_split,]
+train_data_dist <- train_data_dist[, c(1:9, 12:21)]
+test_data_dist <- test_data_dist[, c(1:9, 12:21)]
+
+# create model weights for data_dist
+model_weights_dist <- data.frame(matrix(NA, nrow = nrow(train_data_dist), ncol = 1))
+for(i in 1:nrow(train_data_dist)) {
+  if(train_data_dist[i,]$final_result == "Distinction") {
+      model_weights_dist[i,] <- (1/table(train_data_dist$final_result)[1]) * 0.5
+  } else {
+      model_weights_dist[i,] <- (1/table(train_data_dist$final_result)[2]) * 0.5
+  }
+}
+```
+
+### Iteration 4b: Modeling with Gradient Boosting model and Random Forest model
+
+```{r}
+# Gradient boosting model
+library(gbm)
+set.seed(100)
+data_gbm_dist <- train(final_result ~ .,
+                      data = train_data_dist,
+                      method = "gbm",
+                      weights = model_weights_dist$matrix.NA..nrow...nrow.train_data_dist...ncol...1.,
+                      trControl = data_control)
+
+data_gbm_pred_dist <- predict(data_gbm_dist, test_data_dist)
+confusionMatrix(data_gbm_pred_dist, test_data_dist$final_result)
+
+# Random Forest model
+library(ranger)
+set.seed(100)
+data_rf_dist <- train(final_result ~ .,
+                      data = train_data_dist,
+                      method = "ranger",
+                      verbose = FALSE,
+                      weights = model_weights_dist$matrix.NA..nrow...nrow.train_data_dist...ncol...1.,
+                      importance = "permutation",
+                      trControl = data_control)
+
+data_rf_pred_dist <- predict(data_rf_dist, test_data_dist)
+confusionMatrix(data_rf_pred_dist, test_data_dist$final_result)
+```
+
+### Iteration 4b: Validation and visualization of models
+```{r}
+#select best model
+#result shows rf model with higher accuracy
+models_result_dist <- resamples(list(gbm=data_gbm_dist, rf=data_rf_dist))
+summary(models_result_norm)
+dotplot(models_result_dist)
+
+# confusion matrix of rf model
+confusionMatrix(data_rf_pred_dist, test_data_dist$final_result)
+
+# plot variable importance of rf model
+plot(varImp(data_rf_dist))
+
+# plot ROC curve 
+library(pROC)
+rf_predicted <- ifelse(data_rf_pred_dist=="Distinction", 1, 0)
+rf_actual <- ifelse(test_data_dist$final_result=="Distinction", 1, 0)
+rf_roc <- roc(rf_actual, rf_predicted)
+plot(rf_roc, col = "blue", print.auc=TRUE)
+```
